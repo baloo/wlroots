@@ -1,0 +1,9 @@
+/tmp
+/libwlroots
+/libwlroots-dev
+/build-cache
+*.substvars
+*.symbols
+*.debhelper.log
+/debhelper-build-stamp
+/files

@@ -1,0 +1,37 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/pkg-info.mk
+
+export CCACHE_DIR=$(CURDIR)/debian/build-cache
+
+%:
+	dh $@ --buildsystem=meson
+
+override_dh_clean:
+	dh_clean
+	rm -rf ${CCACHE_DIR}
+
+
+PACKAGE_VER:=$(shell dpkg-parsechangelog | sed -n -e 's/^Version: //p')
+DEB_PATH=dists/unstable/main/binary-amd64
+PACKAGE_NAME=libwlroots*
+REPOSITORY_NAME=wlroots
+
+.PHONY:
+publish:
+	rm -rf .git/publish
+	git branch -D publish || true
+	git worktree add .git/publish
+	cd .git/publish; git branch -D gh-pages || true
+	cd .git/publish; git checkout --orphan gh-pages
+	cd .git/publish; git rm -rf .; git clean -x -d -f
+	mkdir -p .git/publish/debian/${DEB_PATH}
+	cp ../${PACKAGE_NAME}_${PACKAGE_VER}_*.deb .git/publish/debian/
+	cd .git/publish/debian; dpkg-scanpackages . > ${DEB_PATH}/Packages
+	cd .git/publish; echo '<html><body><pre>deb http://baloo.github.io/${REPOSITORY_NAME}/debian/ unstable main</pre></body></html>' > index.html
+	gpg --sign  -ba --digest-algo SHA256 -o .git/publish/debian/${DEB_PATH}/Packages.gpg .git/publish/debian/${DEB_PATH}/Packages
+	cd .git/publish/debian/dists/unstable/; apt-ftparchive --md5 --sha256 release . > Release
+	cd .git/publish/debian/dists/unstable/; gpg --armor --digest-algo SHA256 --output Release.gpg --detach-sign Release
+	cd .git/publish/debian/dists/unstable/; gpg --clearsign --digest-algo SHA256 --output InRelease Release
+	cd .git/publish; git add .; git commit -m "new version"
+	git push baloo +gh-pages
