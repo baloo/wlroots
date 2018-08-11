@@ -1,0 +1,36 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA256
+
+Date: Sat, 11 Aug 2018 20:18:45 +0000
+MD5Sum:
+ 191d55ea7788f767477adb7db3136644               38 Release
+ a9bf68f4188f7316584b5c10d4eb7f8c             2279 main/binary-amd64/Packages
+ 0fe301d533c31da996453c5f7ed54c08              833 main/binary-amd64/Packages.gpg
+SHA1:
+ e4c25cd6d3aa5bd9d6e2d62195367543d090bafa               38 Release
+ 99046069f78bd1ad97f54653ee654a9b782b1b17             2279 main/binary-amd64/Packages
+ 59c6992a9ae58df632383b2ebcd42bd92838acec              833 main/binary-amd64/Packages.gpg
+SHA256:
+ 041315b3fd3148429770d7952b1dd2ff31d84d88d766113dd093d347d0b1be90               38 Release
+ 312a9730b4782e64059563c088a78237353c71cff53771d9667c25f9217d431f             2279 main/binary-amd64/Packages
+ 7299956446d48838f1160a94233fffc764d354538a3826f6ce63c3232b170ae3              833 main/binary-amd64/Packages.gpg
+SHA512:
+ 450790a4578d0b16525280e3edba4376937cd63c36f16cd964ba247da938880b52a3d4ea2e35b114f903c9867fd0082522dd5a0bf09e64472db394b99ee08670               38 Release
+ 35bc5f32688093bed4bb8982a497581b99be920223066c970469be4b0b736b242182fd6ccfcd4241fae0a08b80310903eb7d3aae88a97f86871bb61e69fd1898             2279 main/binary-amd64/Packages
+ b32e306830bea9790218ea9d423650ad4f55e9053418138da14bc68c81f4f624c8a664dbf04741a39bc660fce8f0ac708e9bb69cba55bb627bf2637eda52a61f              833 main/binary-amd64/Packages.gpg
+-----BEGIN PGP SIGNATURE-----
+
+iQIzBAEBCAAdFiEEqXoV9fTgb+4D2EfCIEwZf4VSLz8FAltvRKgACgkQIEwZf4VS
+Lz9u6A//a/0UGeBQvO4NE1qky+YRuTHMnkiUT+MAAIp+6g12NTxWWWTo6eAtsC4U
+Y1bCM6dYgp8KhsPxkgIAwafOFQ+XgEayrLEHSLYI7/NbF3l4t+DXz1rC+GveY1SM
+0npu4zzKKLRfrUAQ2AfFgx+IkfTEXUZWHCGt4QBv2+Hz1GM2L1F/D2206icXQnS9
+vVG2layRhbbIrZsWngRg47Z4JTCoRqrv3OY4c3wKsFW+W/3GfUlQpfXTNraqUGZs
+/DUloNuVMJeaQWMqrAvw8+vaohZL2GR1jeKY06eaFGUvSksNOHDr7bwyffdHVD2E
+20dFRtozbg94UUy/OfTyNALxmX+VWmdkZhon+LPU5Xt6rZTJU56UqiB3oYYeXc0s
+baSBR6Vxdn0cSGY6asX6OPMergWBi5TGZQ0pdn/l57OrDkp/4OI9b/LzCSDGfOWG
+CeBZZR57THdRgNt1lk8SxhfLqV88w7sS7iDjiIn2UgT1iE8tDX5+hb+0SdfavpWr
+ATse93ke+PTn2u17WXpUxuHzRakXPGm6NqDR4ejxmX7lss6QLKSC74JqegeadnOe
+F0EROnduZ+FchxvviqgsDpKmXlbCB1JP3baCjYFluoVbfJLX04P6wLQA2SwQarqr
+26OIR6tdBIZL5r0J3uJA6FjAljrnmLt8juoNM3H6Vdp+rmryRNY=
+=tWll
+-----END PGP SIGNATURE-----

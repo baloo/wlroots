@@ -1,0 +1,54 @@
+Package: libwlroots-dev
+Source: wlroots
+Version: 0.0.0~git20180811
+Architecture: amd64
+Maintainer: Arthur Gautier <baloo@superbaloo.net>
+Installed-Size: 221
+Depends: libwlroots0 (= 0.0.0~git20180811)
+Filename: ./libwlroots-dev_0.0.0~git20180811_amd64.deb
+Size: 33592
+MD5sum: e01df838f3a3b8e3192c7658c12c5890
+SHA1: b4eeba79ee93bdc55d830f2c337fb33fe7075657
+SHA256: be47fe3cb187cfcc13836f87c821b37e4174fe76a4cacd8fcddccdd6a17113a0
+Section: libs
+Priority: optional
+Homepage: https://github.com/swaywm/wlroots
+Description: A modular Wayland compositor library - headers
+ Pluggable, composable, unopinionated modules for building a Wayland compositor
+
+Package: libwlroots0
+Source: wlroots
+Version: 0.0.0~git20180811
+Architecture: amd64
+Maintainer: Arthur Gautier <baloo@superbaloo.net>
+Installed-Size: 542
+Depends: libc6 (>= 2.17), libcap2 (>= 1:2.10), libdrm2 (>= 2.4.74), libegl1, libgbm1 (>= 17.1.0~rc2), libgles2, libinput10 (>= 1.4.0), libpixman-1-0 (>= 0.25.2), libsystemd0 (>= 221), libudev1 (>= 183), libwayland-client0 (>= 1.9.91), libwayland-egl1 (>= 1.15.0), libwayland-server0 (>= 1.11.91), libx11-6, libx11-xcb1, libxcb-composite0, libxcb-icccm4 (>= 0.4.1), libxcb-render0, libxcb-xfixes0, libxcb-xkb1, libxcb1, libxkbcommon0 (>= 0.5.0)
+Filename: ./libwlroots0_0.0.0~git20180811_amd64.deb
+Size: 168056
+MD5sum: 054afefd977624eb04bc9d80ef44c34f
+SHA1: cd79876f3df745267c6f013cd403a9e30c8cafa4
+SHA256: 7142b0a7241c69fcf0b6a520bf0783856ea02e1617a92210ddc2b17aa0317d75
+Section: libs
+Priority: optional
+Homepage: https://github.com/swaywm/wlroots
+Description: A modular Wayland compositor library
+ Pluggable, composable, unopinionated modules for building a Wayland compositor
+
+Package: libwlroots0-dbgsym
+Source: wlroots
+Version: 0.0.0~git20180811
+Auto-Built-Package: debug-symbols
+Architecture: amd64
+Maintainer: Arthur Gautier <baloo@superbaloo.net>
+Installed-Size: 937
+Depends: libwlroots0 (= 0.0.0~git20180811)
+Filename: ./libwlroots0-dbgsym_0.0.0~git20180811_amd64.deb
+Size: 831852
+MD5sum: cfe1279259575c8f627bd5c9cc72ef37
+SHA1: 50920484d8b76a09fb0a37f502f2e67fb56849c7
+SHA256: df2b601da6f6f119ea404b0cde67b9c3185d22d39ad0a839f0a50856de958c2e
+Section: debug
+Priority: optional
+Description: debug symbols for libwlroots0
+Build-Ids: e88993d321b9d0a3a366307891df88961736ee1c
+
