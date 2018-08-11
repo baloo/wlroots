@@ -26,7 +26,7 @@ Standards-Version: 3.9.8
 Rules-Requires-Root: no
 Homepage: https://github.com/swaywm/wlroots
 
-Package: libwlroots
+Package: libwlroots0
 Architecture: any
 Section: libs
 Depends: ${shlibs:Depends}, ${misc:Depends}
@@ -36,6 +36,6 @@ Description: A modular Wayland compositor library
 Package: libwlroots-dev
 Architecture: any
 Section: libs
-Depends: ${misc:Depends}
+Depends: ${misc:Depends}, libwlroots0 (= ${source:Version})
 Description: A modular Wayland compositor library - headers
  Pluggable, composable, unopinionated modules for building a Wayland compositor

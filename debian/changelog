@@ -1,4 +1,4 @@
-wlroots (0.0.0~20180811) unstable; urgency=medium
+wlroots (0.0.0~git20180811) unstable; urgency=medium
 
   * Initial packaging
 
