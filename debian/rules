@@ -20,6 +20,8 @@ REPOSITORY_NAME=wlroots
 .PHONY:
 publish:
 	rm -rf .git/publish
+	git worktree remove .git/publish || true
+	git branch -D gh-pages || true
 	git branch -D publish || true
 	git worktree add .git/publish
 	cd .git/publish; git branch -D gh-pages || true
