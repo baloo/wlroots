@@ -34,8 +34,8 @@ Description: A modular Wayland compositor library
  Pluggable, composable, unopinionated modules for building a Wayland compositor
 
 Package: libwlroots-dev
-Architecture: any
+Architecture: all
 Section: libs
-Depends: ${misc:Depends}, libwlroots0 (= ${source:Version})
+Depends: ${misc:Depends}, libwlroots0 (= ${binary:Version})
 Description: A modular Wayland compositor library - headers
  Pluggable, composable, unopinionated modules for building a Wayland compositor
