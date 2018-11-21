@@ -1,4 +1,3 @@
-#define _XOPEN_SOURCE 700
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -344,9 +343,6 @@ static void drag_icon_surface_role_commit(struct wlr_surface *surface) {
 	if (icon == NULL) {
 		return;
 	}
-
-	icon->sx += icon->surface->current.dx;
-	icon->sy += icon->surface->current.dy;
 
 	drag_icon_set_mapped(icon, wlr_surface_has_buffer(surface));
 }

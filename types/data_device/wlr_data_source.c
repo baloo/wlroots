@@ -1,4 +1,4 @@
-#define _XOPEN_SOURCE 700
+#define _POSIX_C_SOURCE 200809L
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -207,11 +207,10 @@ static void data_source_set_actions(struct wl_client *client,
 		return;
 	}
 
-	if (source->source.seat_client) {
+	if (source->finalized) {
 		wl_resource_post_error(source->resource,
 			WL_DATA_SOURCE_ERROR_INVALID_ACTION_MASK,
-			"invalid action change after "
-			"wl_data_device.start_drag");
+			"invalid action change after wl_data_device.start_drag");
 		return;
 	}
 

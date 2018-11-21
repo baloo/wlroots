@@ -116,6 +116,7 @@ struct wlr_xwayland_surface {
 	char *title;
 	char *class;
 	char *instance;
+	char *role;
 	pid_t pid;
 	bool has_utf8_title;
 
@@ -138,6 +139,7 @@ struct wlr_xwayland_surface {
 	struct wl_event_source *ping_timer;
 
 	// _NET_WM_STATE
+	bool modal;
 	bool fullscreen;
 	bool maximized_vert, maximized_horz;
 
@@ -150,15 +152,18 @@ struct wlr_xwayland_surface {
 		struct wl_signal request_resize;
 		struct wl_signal request_maximize;
 		struct wl_signal request_fullscreen;
+		struct wl_signal request_activate;
 
 		struct wl_signal map;
 		struct wl_signal unmap;
 		struct wl_signal set_title;
 		struct wl_signal set_class;
+		struct wl_signal set_role;
 		struct wl_signal set_parent;
 		struct wl_signal set_pid;
 		struct wl_signal set_window_type;
 		struct wl_signal set_hints;
+		struct wl_signal set_decorations;
 		struct wl_signal set_override_redirect;
 		struct wl_signal ping_timeout;
 	} events;

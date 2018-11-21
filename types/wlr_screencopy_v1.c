@@ -4,7 +4,9 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/backend.h>
+#include <wlr/util/log.h>
 #include "wlr-screencopy-unstable-v1-protocol.h"
+#include "util/signal.h"
 
 #define SCREENCOPY_MANAGER_VERSION 1
 
@@ -21,6 +23,9 @@ static void frame_destroy(struct wlr_screencopy_frame_v1 *frame) {
 	if (frame == NULL) {
 		return;
 	}
+	if (frame->cursor_locked) {
+		wlr_output_lock_software_cursors(frame->output, false);
+	}
 	wl_list_remove(&frame->link);
 	wl_list_remove(&frame->output_swap_buffers.link);
 	wl_list_remove(&frame->buffer_destroy.link);
@@ -36,6 +41,7 @@ static void frame_handle_output_swap_buffers(struct wl_listener *listener,
 	struct wlr_output_event_swap_buffers *event = _data;
 	struct wlr_output *output = frame->output;
 	struct wlr_renderer *renderer = wlr_backend_get_renderer(output->backend);
+	assert(renderer);
 
 	wl_list_remove(&frame->output_swap_buffers.link);
 	wl_list_init(&frame->output_swap_buffers.link);
@@ -132,6 +138,11 @@ static void frame_handle_copy(struct wl_client *client,
 	// Schedule a buffer swap
 	output->needs_swap = true;
 	wlr_output_schedule_frame(output);
+
+	if (frame->overlay_cursor) {
+		wlr_output_lock_software_cursors(output, true);
+		frame->cursor_locked = true;
+	}
 }
 
 static void frame_handle_destroy(struct wl_client *client,
@@ -188,6 +199,7 @@ static void capture_output(struct wl_client *client,
 	}
 	frame->manager = manager;
 	frame->output = output;
+	frame->overlay_cursor = !!overlay_cursor;
 
 	frame->resource = wl_resource_create(client,
 		&zwlr_screencopy_frame_v1_interface, version, id);
@@ -204,11 +216,25 @@ static void capture_output(struct wl_client *client,
 	wl_list_init(&frame->output_swap_buffers.link);
 	wl_list_init(&frame->buffer_destroy.link);
 
-	frame->format = WL_SHM_FORMAT_XRGB8888;
+	struct wlr_renderer *renderer = wlr_backend_get_renderer(output->backend);
+	assert(renderer);
+
+	if (!wlr_renderer_preferred_read_format(renderer, &frame->format)) {
+		wlr_log(WLR_ERROR,
+			"Failed to capture output: no read format supported by renderer");
+		goto error;
+	}
+
 	frame->box = buffer_box;
-	frame->stride = 4 * buffer_box.width;
+	frame->stride = 4 * buffer_box.width; // TODO: depends on read format
+
 	zwlr_screencopy_frame_v1_send_buffer(frame->resource, frame->format,
 		buffer_box.width, buffer_box.height, frame->stride);
+	return;
+
+error:
+	zwlr_screencopy_frame_v1_send_failed(frame->resource);
+	frame_destroy(frame);
 }
 
 static void manager_handle_capture_output(struct wl_client *client,
@@ -295,6 +321,8 @@ struct wlr_screencopy_manager_v1 *wlr_screencopy_manager_v1_create(
 	wl_list_init(&manager->resources);
 	wl_list_init(&manager->frames);
 
+	wl_signal_init(&manager->events.destroy);
+
 	manager->display_destroy.notify = handle_display_destroy;
 	wl_display_add_destroy_listener(display, &manager->display_destroy);
 
@@ -306,6 +334,7 @@ void wlr_screencopy_manager_v1_destroy(
 	if (manager == NULL) {
 		return;
 	}
+	wlr_signal_emit_safe(&manager->events.destroy, manager);
 	wl_list_remove(&manager->display_destroy.link);
 	struct wlr_screencopy_frame_v1 *frame, *tmp_frame;
 	wl_list_for_each_safe(frame, tmp_frame, &manager->frames, link) {

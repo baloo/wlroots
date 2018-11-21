@@ -3,10 +3,12 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <time.h>
+#include <wlr/backend/drm.h>
 #include <wlr/config.h>
-#include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_compositor.h>
+#include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_output_layout.h>
+#include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_wl_shell.h>
 #include <wlr/types/wlr_xdg_shell_v6.h>
 #include <wlr/types/wlr_xdg_shell.h>
@@ -16,13 +18,12 @@
 #include "rootston/layers.h"
 #include "rootston/output.h"
 #include "rootston/server.h"
-#include "backend/drm/drm.h"
 
 /**
  * Rotate a child's position relative to a parent. The parent size is (pw, ph),
  * the child position is (*sx, *sy) and its size is (sw, sh).
  */
-static void rotate_child_position(double *sx, double *sy, double sw, double sh,
+void rotate_child_position(double *sx, double *sy, double sw, double sh,
 		double pw, double ph, float rotation) {
 	if (rotation != 0.0) {
 		// Coordinates relative to the center of the subsurface
@@ -85,7 +86,7 @@ static void view_for_each_surface(struct roots_view *view,
 		wlr_wl_shell_surface_for_each_surface(view->wl_shell_surface, iterator,
 			user_data);
 		break;
-#ifdef WLR_HAS_XWAYLAND
+#if WLR_HAS_XWAYLAND
 	case ROOTS_XWAYLAND_VIEW:
 		wlr_surface_for_each_surface(view->wlr_surface, iterator, user_data);
 		break;
@@ -93,7 +94,7 @@ static void view_for_each_surface(struct roots_view *view,
 	}
 }
 
-#ifdef WLR_HAS_XWAYLAND
+#if WLR_HAS_XWAYLAND
 static void xwayland_children_for_each_surface(
 		struct wlr_xwayland_surface *surface,
 		wlr_surface_iterator_func_t iterator, struct layout_data *layout_data,
@@ -124,6 +125,61 @@ static void drag_icons_for_each_surface(struct roots_input *input,
 				drag_icon->x, drag_icon->y, 0, layout_data,
 				iterator, user_data);
 		}
+	}
+}
+
+static void layer_for_each_surface(struct wl_list *layer,
+		const struct wlr_box *output_layout_box,
+		wlr_surface_iterator_func_t iterator, struct layout_data *layout_data,
+		void *user_data) {
+	struct roots_layer_surface *roots_surface;
+	wl_list_for_each(roots_surface, layer, link) {
+		struct wlr_layer_surface_v1 *layer = roots_surface->layer_surface;
+
+		layout_data->x = roots_surface->geo.x + output_layout_box->x;
+		layout_data->y = roots_surface->geo.y + output_layout_box->y;
+		layout_data->width = roots_surface->geo.width;
+		layout_data->height = roots_surface->geo.height;
+		layout_data->rotation = 0;
+		wlr_layer_surface_v1_for_each_surface(layer, iterator, user_data);
+	}
+}
+
+static void output_for_each_surface(struct roots_output *output,
+		wlr_surface_iterator_func_t iterator, struct layout_data *layout_data,
+		void *user_data) {
+	struct wlr_output *wlr_output = output->wlr_output;
+	struct roots_desktop *desktop = output->desktop;
+	struct roots_server *server = desktop->server;
+
+	const struct wlr_box *output_box =
+		wlr_output_layout_get_box(desktop->layout, wlr_output);
+
+	if (output->fullscreen_view != NULL) {
+		struct roots_view *view = output->fullscreen_view;
+
+		view_for_each_surface(view, layout_data, iterator, user_data);
+
+#if WLR_HAS_XWAYLAND
+		if (view->type == ROOTS_XWAYLAND_VIEW) {
+			xwayland_children_for_each_surface(view->xwayland_surface,
+				iterator, layout_data, user_data);
+		}
+#endif
+	} else {
+		struct roots_view *view;
+		wl_list_for_each_reverse(view, &desktop->views, link) {
+			view_for_each_surface(view, layout_data, iterator, user_data);
+		}
+
+		drag_icons_for_each_surface(server->input, iterator,
+			layout_data, user_data);
+	}
+
+	size_t len = sizeof(output->layers) / sizeof(output->layers[0]);
+	for (size_t i = 0; i < len; ++i) {
+		layer_for_each_surface(&output->layers[i], output_box,
+			iterator, layout_data, user_data);
 	}
 }
 
@@ -320,24 +376,12 @@ static void render_view(struct roots_view *view, struct render_data *data) {
 	view_for_each_surface(view, &data->layout, render_surface, data);
 }
 
-static bool has_standalone_surface(struct roots_view *view) {
-	if (!wl_list_empty(&view->wlr_surface->subsurfaces)) {
-		return false;
-	}
-
-	switch (view->type) {
-	case ROOTS_XDG_SHELL_V6_VIEW:
-		return wl_list_empty(&view->xdg_surface_v6->popups);
-	case ROOTS_XDG_SHELL_VIEW:
-		return wl_list_empty(&view->xdg_surface->popups);
-	case ROOTS_WL_SHELL_VIEW:
-		return wl_list_empty(&view->wl_shell_surface->popups);
-#ifdef WLR_HAS_XWAYLAND
-	case ROOTS_XWAYLAND_VIEW:
-		return wl_list_empty(&view->xwayland_surface->children);
-#endif
-	}
-	return true;
+static void render_layer(struct roots_output *output,
+		const struct wlr_box *output_layout_box, struct render_data *data,
+		struct wl_list *layer) {
+	data->alpha = 1;
+	layer_for_each_surface(layer, output_layout_box, render_surface,
+		&data->layout, data);
 }
 
 static void surface_send_frame_done(struct wlr_surface *surface, int sx, int sy,
@@ -356,38 +400,6 @@ static void surface_send_frame_done(struct wlr_surface *surface, int sx, int sy,
 	}
 
 	wlr_surface_send_frame_done(surface, when);
-}
-
-static void render_layer(struct roots_output *output,
-		const struct wlr_box *output_layout_box, struct render_data *data,
-		struct wl_list *layer) {
-	struct roots_layer_surface *roots_surface;
-	wl_list_for_each(roots_surface, layer, link) {
-		struct wlr_layer_surface *layer = roots_surface->layer_surface;
-
-		surface_for_each_surface(layer->surface,
-			roots_surface->geo.x + output_layout_box->x,
-			roots_surface->geo.y + output_layout_box->y,
-			0, &data->layout, render_surface, data);
-
-		wlr_layer_surface_for_each_surface(layer, render_surface, data);
-	}
-}
-
-static void layers_send_done(
-		struct roots_output *output, struct timespec *when) {
-	size_t len = sizeof(output->layers) / sizeof(output->layers[0]);
-	for (size_t i = 0; i < len; ++i) {
-		struct roots_layer_surface *roots_surface;
-		wl_list_for_each(roots_surface, &output->layers[i], link) {
-			struct wlr_layer_surface *layer = roots_surface->layer_surface;
-			wlr_surface_send_frame_done(layer->surface, when);
-			struct wlr_xdg_popup *popup;
-			wl_list_for_each(popup, &roots_surface->layer_surface->popups, link) {
-				wlr_surface_send_frame_done(popup->base->surface, when);
-			}
-		}
-	}
 }
 
 static void render_output(struct roots_output *output) {
@@ -423,16 +435,8 @@ static void render_output(struct roots_output *output) {
 			output_box->y;
 		view_move(view, view_x, view_y);
 
-		if (has_standalone_surface(view)) {
-			wlr_output_set_fullscreen_surface(wlr_output, view->wlr_surface);
-		} else {
-			wlr_output_set_fullscreen_surface(wlr_output, NULL);
-		}
-
 		// Fullscreen views are rendered on a black background
 		clear_color[0] = clear_color[1] = clear_color[2] = 0;
-	} else {
-		wlr_output_set_fullscreen_surface(wlr_output, NULL);
 	}
 
 	bool needs_swap;
@@ -481,11 +485,6 @@ static void render_output(struct roots_output *output) {
 	if (output->fullscreen_view != NULL) {
 		struct roots_view *view = output->fullscreen_view;
 
-		if (wlr_output->fullscreen_surface == view->wlr_surface) {
-			// The output will render the fullscreen view
-			goto renderer_end;
-		}
-
 		if (view->wlr_surface != NULL) {
 			view_for_each_surface(view, &data.layout, render_surface, &data);
 		}
@@ -493,7 +492,7 @@ static void render_output(struct roots_output *output) {
 		// During normal rendering the xwayland window tree isn't traversed
 		// because all windows are rendered. Here we only want to render
 		// the fullscreen window's children so we have to traverse the tree.
-#ifdef WLR_HAS_XWAYLAND
+#if WLR_HAS_XWAYLAND
 		if (view->type == ROOTS_XWAYLAND_VIEW) {
 			xwayland_children_for_each_surface(view->xwayland_surface,
 				render_surface, &data.layout, &data);
@@ -519,6 +518,7 @@ static void render_output(struct roots_output *output) {
 			&output->layers[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY]);
 
 renderer_end:
+	wlr_output_render_software_cursors(wlr_output, &damage);
 	wlr_renderer_scissor(renderer, NULL);
 	wlr_renderer_end(renderer);
 
@@ -537,33 +537,8 @@ damage_finish:
 	pixman_region32_fini(&damage);
 
 	// Send frame done events to all surfaces
-	if (output->fullscreen_view != NULL) {
-		struct roots_view *view = output->fullscreen_view;
-		if (wlr_output->fullscreen_surface == view->wlr_surface) {
-			// The surface is managed by the wlr_output
-			return;
-		}
-
-		view_for_each_surface(view, &data.layout, surface_send_frame_done,
-			&data);
-
-#ifdef WLR_HAS_XWAYLAND
-		if (view->type == ROOTS_XWAYLAND_VIEW) {
-			xwayland_children_for_each_surface(view->xwayland_surface,
-				surface_send_frame_done, &data.layout, &data);
-		}
-#endif
-	} else {
-		struct roots_view *view;
-		wl_list_for_each_reverse(view, &desktop->views, link) {
-			view_for_each_surface(view, &data.layout, surface_send_frame_done,
-				&data);
-		}
-
-		drag_icons_for_each_surface(server->input, surface_send_frame_done,
-			&data.layout, &data);
-	}
-	layers_send_done(output, data.when);
+	output_for_each_surface(output, surface_send_frame_done,
+		&data.layout, &data);
 }
 
 void output_damage_whole(struct roots_output *output) {
@@ -581,7 +556,7 @@ static bool view_accept_damage(struct roots_output *output,
 	if (output->fullscreen_view == view) {
 		return true;
 	}
-#ifdef WLR_HAS_XWAYLAND
+#if WLR_HAS_XWAYLAND
 	if (output->fullscreen_view->type == ROOTS_XWAYLAND_VIEW &&
 			view->type == ROOTS_XWAYLAND_VIEW) {
 		// Special case: accept damage from children
@@ -696,16 +671,11 @@ static void damage_from_surface(struct wlr_surface *surface, int sx, int sy,
 	int center_x = box.x + box.width/2;
 	int center_y = box.y + box.height/2;
 
-	enum wl_output_transform transform =
-		wlr_output_transform_invert(surface->current.transform);
-
 	pixman_region32_t damage;
 	pixman_region32_init(&damage);
-	pixman_region32_copy(&damage, &surface->buffer_damage);
-	wlr_region_transform(&damage, &damage, transform,
-		surface->current.buffer_width, surface->current.buffer_height);
-	wlr_region_scale(&damage, &damage,
-		wlr_output->scale / (float)surface->current.scale);
+	wlr_surface_get_effective_damage(surface, &damage);
+
+	wlr_region_scale(&damage, &damage, wlr_output->scale);
 	if (ceil(wlr_output->scale) > surface->current.scale) {
 		// When scaling up a surface, it'll become blurry so we need to
 		// expand the damage region
@@ -774,6 +744,7 @@ static void output_destroy(struct roots_output *output) {
 	wl_list_remove(&output->destroy.link);
 	wl_list_remove(&output->mode.link);
 	wl_list_remove(&output->transform.link);
+	wl_list_remove(&output->present.link);
 	wl_list_remove(&output->damage_frame.link);
 	wl_list_remove(&output->damage_destroy.link);
 	free(output);
@@ -810,6 +781,52 @@ static void output_handle_transform(struct wl_listener *listener, void *data) {
 	arrange_layers(output);
 }
 
+struct presentation_data {
+	struct layout_data layout;
+	struct roots_output *output;
+	struct wlr_presentation_event *event;
+};
+
+static void surface_send_presented(struct wlr_surface *surface, int sx, int sy,
+		void *_data) {
+	struct presentation_data *data = _data;
+	struct roots_output *output = data->output;
+	float rotation = data->layout.rotation;
+
+	double lx, ly;
+	get_layout_position(&data->layout, &lx, &ly, surface, sx, sy);
+
+	if (!surface_intersect_output(surface, output->desktop->layout,
+			output->wlr_output, lx, ly, rotation, NULL)) {
+		return;
+	}
+
+	wlr_presentation_send_surface_presented(output->desktop->presentation,
+		surface, data->event);
+}
+
+static void output_handle_present(struct wl_listener *listener, void *data) {
+	struct roots_output *output =
+		wl_container_of(listener, output, present);
+	struct wlr_output_event_present *output_event = data;
+
+	struct wlr_presentation_event event = {
+		.output = output->wlr_output,
+		.tv_sec = (uint64_t)output_event->when->tv_sec,
+		.tv_nsec = (uint32_t)output_event->when->tv_nsec,
+		.refresh = (uint32_t)output_event->refresh,
+		.seq = (uint64_t)output_event->seq,
+		.flags = output_event->flags,
+	};
+
+	struct presentation_data presentation_data = {
+		.output = output,
+		.event = &event,
+	};
+	output_for_each_surface(output, surface_send_presented,
+		&presentation_data.layout, &presentation_data);
+}
+
 void handle_new_output(struct wl_listener *listener, void *data) {
 	struct roots_desktop *desktop = wl_container_of(listener, desktop,
 		new_output);
@@ -821,12 +838,6 @@ void handle_new_output(struct wl_listener *listener, void *data) {
 	wlr_log(WLR_DEBUG, "'%s %s %s' %"PRId32"mm x %"PRId32"mm", wlr_output->make,
 		wlr_output->model, wlr_output->serial, wlr_output->phys_width,
 		wlr_output->phys_height);
-
-	if (!wl_list_empty(&wlr_output->modes)) {
-		struct wlr_output_mode *mode =
-			wl_container_of((&wlr_output->modes)->prev, mode, link);
-		wlr_output_set_mode(wlr_output, mode);
-	}
 
 	struct roots_output *output = calloc(1, sizeof(struct roots_output));
 	clock_gettime(CLOCK_MONOTONIC, &output->last_frame);
@@ -843,6 +854,8 @@ void handle_new_output(struct wl_listener *listener, void *data) {
 	wl_signal_add(&wlr_output->events.mode, &output->mode);
 	output->transform.notify = output_handle_transform;
 	wl_signal_add(&wlr_output->events.transform, &output->transform);
+	output->present.notify = output_handle_present;
+	wl_signal_add(&wlr_output->events.present, &output->present);
 
 	output->damage_frame.notify = output_damage_handle_frame;
 	wl_signal_add(&output->damage->events.frame, &output->damage_frame);
@@ -856,22 +869,28 @@ void handle_new_output(struct wl_listener *listener, void *data) {
 
 	struct roots_output_config *output_config =
 		roots_config_get_output(config, wlr_output);
+
+	if ((!output_config || output_config->enable) && !wl_list_empty(&wlr_output->modes)) {
+		struct wlr_output_mode *mode =
+			wl_container_of(wlr_output->modes.prev, mode, link);
+		wlr_output_set_mode(wlr_output, mode);
+	}
+
 	if (output_config) {
 		if (output_config->enable) {
-			struct roots_output_mode_config *mode_config;
-
 			if (wlr_output_is_drm(wlr_output)) {
+				struct roots_output_mode_config *mode_config;
 				wl_list_for_each(mode_config, &output_config->modes, link) {
 					wlr_drm_connector_add_mode(wlr_output, &mode_config->info);
 				}
-			} else {
-				if (!wl_list_empty(&output_config->modes)) {
-					wlr_log(WLR_ERROR, "Can only add modes for DRM backend");
-				}
+			} else if (!wl_list_empty(&output_config->modes)) {
+				wlr_log(WLR_ERROR, "Can only add modes for DRM backend");
 			}
+
 			if (output_config->mode.width) {
 				set_mode(wlr_output, output_config);
 			}
+
 			wlr_output_set_scale(wlr_output, output_config->scale);
 			wlr_output_set_transform(wlr_output, output_config->transform);
 			wlr_output_layout_add(desktop->layout, wlr_output, output_config->x,

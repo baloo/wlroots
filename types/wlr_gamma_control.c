@@ -155,11 +155,12 @@ void wlr_gamma_control_manager_destroy(
 	if (!manager) {
 		return;
 	}
-	wl_list_remove(&manager->display_destroy.link);
 	struct wlr_gamma_control *gamma_control, *tmp;
 	wl_list_for_each_safe(gamma_control, tmp, &manager->controls, link) {
 		gamma_control_destroy(gamma_control);
 	}
+	wlr_signal_emit_safe(&manager->events.destroy, manager);
+	wl_list_remove(&manager->display_destroy.link);
 	wl_global_destroy(manager->global);
 	free(manager);
 }
@@ -186,6 +187,7 @@ struct wlr_gamma_control_manager *wlr_gamma_control_manager_create(
 	}
 	manager->global = global;
 
+	wl_signal_init(&manager->events.destroy);
 	wl_list_init(&manager->controls);
 
 	manager->display_destroy.notify = handle_display_destroy;

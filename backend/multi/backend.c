@@ -1,7 +1,8 @@
+#define _POSIX_C_SOURCE 200112L
 #include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#include <wlr/backend/drm.h>
+#include <time.h>
 #include <wlr/backend/interface.h>
 #include <wlr/backend/session.h>
 #include <wlr/util/log.h>
@@ -17,8 +18,14 @@ struct subbackend_state {
 	struct wl_list link;
 };
 
+static struct wlr_multi_backend *multi_backend_from_backend(
+		struct wlr_backend *wlr_backend) {
+	assert(wlr_backend_is_multi(wlr_backend));
+	return (struct wlr_multi_backend *)wlr_backend;
+}
+
 static bool multi_backend_start(struct wlr_backend *wlr_backend) {
-	struct wlr_multi_backend *backend = (struct wlr_multi_backend *)wlr_backend;
+	struct wlr_multi_backend *backend = multi_backend_from_backend(wlr_backend);
 	struct subbackend_state *sub;
 	wl_list_for_each(sub, &backend->backends, link) {
 		if (!wlr_backend_start(sub->backend)) {
@@ -38,7 +45,7 @@ static void subbackend_state_destroy(struct subbackend_state *sub) {
 }
 
 static void multi_backend_destroy(struct wlr_backend *wlr_backend) {
-	struct wlr_multi_backend *backend = (struct wlr_multi_backend *)wlr_backend;
+	struct wlr_multi_backend *backend = multi_backend_from_backend(wlr_backend);
 
 	wl_list_remove(&backend->display_destroy.link);
 
@@ -54,7 +61,8 @@ static void multi_backend_destroy(struct wlr_backend *wlr_backend) {
 
 static struct wlr_renderer *multi_backend_get_renderer(
 		struct wlr_backend *backend) {
-	struct wlr_multi_backend *multi = (struct wlr_multi_backend *)backend;
+	struct wlr_multi_backend *multi = multi_backend_from_backend(backend);
+
 	struct subbackend_state *sub;
 	wl_list_for_each(sub, &multi->backends, link) {
 		struct wlr_renderer *rend = wlr_backend_get_renderer(sub->backend);
@@ -65,10 +73,32 @@ static struct wlr_renderer *multi_backend_get_renderer(
 	return NULL;
 }
 
+static struct wlr_session *multi_backend_get_session(
+		struct wlr_backend *_backend) {
+	struct wlr_multi_backend *backend = multi_backend_from_backend(_backend);
+	return backend->session;
+}
+
+static clockid_t multi_backend_get_presentation_clock(
+		struct wlr_backend *backend) {
+	struct wlr_multi_backend *multi = multi_backend_from_backend(backend);
+
+	struct subbackend_state *sub;
+	wl_list_for_each(sub, &multi->backends, link) {
+		if (sub->backend->impl->get_presentation_clock) {
+			return wlr_backend_get_presentation_clock(sub->backend);
+		}
+	}
+
+	return CLOCK_MONOTONIC;
+}
+
 struct wlr_backend_impl backend_impl = {
 	.start = multi_backend_start,
 	.destroy = multi_backend_destroy,
 	.get_renderer = multi_backend_get_renderer,
+	.get_session = multi_backend_get_session,
+	.get_presentation_clock = multi_backend_get_presentation_clock,
 };
 
 static void handle_display_destroy(struct wl_listener *listener, void *data) {
@@ -132,8 +162,7 @@ static struct subbackend_state *multi_backend_get_subbackend(struct wlr_multi_ba
 
 bool wlr_multi_backend_add(struct wlr_backend *_multi,
 		struct wlr_backend *backend) {
-	assert(wlr_backend_is_multi(_multi));
-	struct wlr_multi_backend *multi = (struct wlr_multi_backend *)_multi;
+	struct wlr_multi_backend *multi = multi_backend_from_backend(_multi);
 
 	if (multi_backend_get_subbackend(multi, backend)) {
 		// already added
@@ -174,8 +203,7 @@ bool wlr_multi_backend_add(struct wlr_backend *_multi,
 
 void wlr_multi_backend_remove(struct wlr_backend *_multi,
 		struct wlr_backend *backend) {
-	assert(wlr_backend_is_multi(_multi));
-	struct wlr_multi_backend *multi = (struct wlr_multi_backend *)_multi;
+	struct wlr_multi_backend *multi = multi_backend_from_backend(_multi);
 
 	struct subbackend_state *sub =
 		multi_backend_get_subbackend(multi, backend);
@@ -186,21 +214,18 @@ void wlr_multi_backend_remove(struct wlr_backend *_multi,
 	}
 }
 
-struct wlr_session *wlr_multi_get_session(struct wlr_backend *_backend) {
-	assert(wlr_backend_is_multi(_backend));
-
-	struct wlr_multi_backend *backend = (struct wlr_multi_backend *)_backend;
-	struct subbackend_state *sub;
-	wl_list_for_each(sub, &backend->backends, link) {
-		if (wlr_backend_is_drm(sub->backend)) {
-			return wlr_drm_backend_get_session(sub->backend);
-		}
-	}
-	return NULL;
-}
-
 bool wlr_multi_is_empty(struct wlr_backend *_backend) {
 	assert(wlr_backend_is_multi(_backend));
 	struct wlr_multi_backend *backend = (struct wlr_multi_backend *)_backend;
 	return wl_list_length(&backend->backends) < 1;
+}
+
+void wlr_multi_for_each_backend(struct wlr_backend *_backend,
+		void (*callback)(struct wlr_backend *backend, void *data), void *data) {
+	assert(wlr_backend_is_multi(_backend));
+	struct wlr_multi_backend *backend = (struct wlr_multi_backend *)_backend;
+	struct subbackend_state *sub;
+	wl_list_for_each(sub, &backend->backends, link) {
+		callback(sub->backend, data);
+	}
 }

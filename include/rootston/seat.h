@@ -5,19 +5,22 @@
 #include "rootston/input.h"
 #include "rootston/keyboard.h"
 #include "rootston/layers.h"
+#include "rootston/text_input.h"
 
 struct roots_seat {
 	struct roots_input *input;
 	struct wlr_seat *seat;
 	struct roots_cursor *cursor;
-	struct wl_list link;
+	struct wl_list link; // roots_input::seats
 
 	// coordinates of the first touch point if it exists
 	int32_t touch_id;
 	double touch_x, touch_y;
 
 	// If the focused layer is set, views cannot receive keyboard focus
-	struct wlr_layer_surface *focused_layer;
+	struct wlr_layer_surface_v1 *focused_layer;
+
+	struct roots_input_method_relay im_relay;
 
 	// If non-null, only this client can receive input events
 	struct wl_client *exclusive_client;
@@ -114,12 +117,19 @@ struct roots_tablet_tool {
 	struct wlr_tablet_v2_tablet_tool *tablet_v2_tool;
 
 	struct roots_seat *seat;
+	double tilt_x, tilt_y;
 
 	struct wl_listener set_cursor;
 	struct wl_listener tool_destroy;
 
 	struct roots_tablet *current_tablet;
 	struct wl_listener tablet_destroy;
+};
+
+struct roots_pointer_constraint {
+	struct wlr_pointer_constraint_v1 *constraint;
+
+	struct wl_listener destroy;
 };
 
 struct roots_seat *roots_seat_create(struct roots_input *input, char *name);
@@ -140,7 +150,7 @@ struct roots_view *roots_seat_get_focus(struct roots_seat *seat);
 void roots_seat_set_focus(struct roots_seat *seat, struct roots_view *view);
 
 void roots_seat_set_focus_layer(struct roots_seat *seat,
-		struct wlr_layer_surface *layer);
+		struct wlr_layer_surface_v1 *layer);
 
 void roots_seat_cycle_focus(struct roots_seat *seat);
 

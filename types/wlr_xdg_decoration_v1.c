@@ -156,6 +156,11 @@ static struct wlr_xdg_decoration_manager_v1 *
 	return wl_resource_get_user_data(resource);
 }
 
+static void decoration_manager_handle_destroy(
+		struct wl_client *client, struct wl_resource *manager_resource) {
+	wl_resource_destroy(manager_resource);
+}
+
 static void decoration_manager_handle_get_toplevel_decoration(
 		struct wl_client *client, struct wl_resource *manager_resource,
 		uint32_t id, struct wl_resource *toplevel_resource) {
@@ -229,6 +234,7 @@ static void decoration_manager_handle_get_toplevel_decoration(
 
 static const struct zxdg_decoration_manager_v1_interface
 		decoration_manager_impl = {
+	.destroy = decoration_manager_handle_destroy,
 	.get_toplevel_decoration = decoration_manager_handle_get_toplevel_decoration,
 };
 
@@ -275,6 +281,7 @@ struct wlr_xdg_decoration_manager_v1 *
 	wl_list_init(&manager->resources);
 	wl_list_init(&manager->decorations);
 	wl_signal_init(&manager->events.new_toplevel_decoration);
+	wl_signal_init(&manager->events.destroy);
 
 	manager->display_destroy.notify = handle_display_destroy;
 	wl_display_add_destroy_listener(display, &manager->display_destroy);
@@ -287,6 +294,7 @@ void wlr_xdg_decoration_manager_v1_destroy(
 	if (manager == NULL) {
 		return;
 	}
+	wlr_signal_emit_safe(&manager->events.destroy, manager);
 	wl_list_remove(&manager->display_destroy.link);
 	struct wlr_xdg_toplevel_decoration_v1 *decoration, *tmp_decoration;
 	wl_list_for_each_safe(decoration, tmp_decoration, &manager->decorations,

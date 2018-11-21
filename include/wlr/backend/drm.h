@@ -28,6 +28,10 @@ struct wlr_backend *wlr_drm_backend_create(struct wl_display *display,
 bool wlr_backend_is_drm(struct wlr_backend *backend);
 bool wlr_output_is_drm(struct wlr_output *output);
 
-struct wlr_session *wlr_drm_backend_get_session(struct wlr_backend *backend);
+/**
+ * Add mode to the list of available modes
+ */
+typedef struct _drmModeModeInfo drmModeModeInfo;
+bool wlr_drm_connector_add_mode(struct wlr_output *output, const drmModeModeInfo *mode);
 
 #endif

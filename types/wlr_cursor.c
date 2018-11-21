@@ -252,7 +252,7 @@ bool wlr_cursor_warp(struct wlr_cursor *cur, struct wlr_input_device *dev,
 	return result;
 }
 
-static void cursor_warp_closest(struct wlr_cursor *cur,
+void wlr_cursor_warp_closest(struct wlr_cursor *cur,
 		struct wlr_input_device *dev, double lx, double ly) {
 	struct wlr_box *mapping = get_mapping(cur, dev);
 	if (mapping) {
@@ -286,7 +286,7 @@ void wlr_cursor_warp_absolute(struct wlr_cursor *cur,
 	double lx, ly;
 	wlr_cursor_absolute_to_layout_coords(cur, dev, x, y, &lx, &ly);
 
-	cursor_warp_closest(cur, dev, lx, ly);
+	wlr_cursor_warp_closest(cur, dev, lx, ly);
 }
 
 void wlr_cursor_move(struct wlr_cursor *cur, struct wlr_input_device *dev,
@@ -296,7 +296,7 @@ void wlr_cursor_move(struct wlr_cursor *cur, struct wlr_input_device *dev,
 	double lx = !isnan(delta_x) ? cur->x + delta_x : cur->x;
 	double ly = !isnan(delta_y) ? cur->y + delta_y : cur->y;
 
-	cursor_warp_closest(cur, dev, lx, ly);
+	wlr_cursor_warp_closest(cur, dev, lx, ly);
 }
 
 void wlr_cursor_set_image(struct wlr_cursor *cur, const uint8_t *pixels,
@@ -332,7 +332,7 @@ static void handle_pointer_motion(struct wl_listener *listener, void *data) {
 
 static void apply_output_transform(double *x, double *y,
 		enum wl_output_transform transform) {
-	double dx = *x, dy = *y;
+	double dx = 0.0, dy = 0.0;
 	double width = 1.0, height = 1.0;
 
 	switch (transform) {
@@ -620,8 +620,14 @@ static void handle_layout_output_destroy(struct wl_listener *listener,
 
 static void layout_add(struct wlr_cursor_state *state,
 		struct wlr_output_layout_output *l_output) {
-	struct wlr_cursor_output_cursor *output_cursor =
-		calloc(1, sizeof(struct wlr_cursor_output_cursor));
+	struct wlr_cursor_output_cursor *output_cursor;
+	wl_list_for_each(output_cursor, &state->output_cursors, link) {
+		if (output_cursor->output_cursor->output == l_output->output) {
+			return; // already added
+		}
+	}
+
+	output_cursor = calloc(1, sizeof(struct wlr_cursor_output_cursor));
 	if (output_cursor == NULL) {
 		wlr_log(WLR_ERROR, "Failed to allocate wlr_cursor_output_cursor");
 		return;

@@ -1,10 +1,11 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <wlr/render/gles2.h>
 #include <wlr/render/interface.h>
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_matrix.h>
-#include <wlr/render/gles2.h>
 #include <wlr/util/log.h>
 #include "util/signal.h"
 
@@ -138,6 +139,15 @@ int wlr_renderer_get_dmabuf_modifiers(struct wlr_renderer *r, int format,
 	return r->impl->get_dmabuf_modifiers(r, format, modifiers);
 }
 
+bool wlr_renderer_preferred_read_format(struct wlr_renderer *r,
+		enum wl_shm_format *fmt) {
+	if (!r->impl->preferred_read_format || !r->impl->read_pixels) {
+		return false;
+	}
+	*fmt = r->impl->preferred_read_format(r);
+	return true;
+}
+
 bool wlr_renderer_read_pixels(struct wlr_renderer *r, enum wl_shm_format fmt,
 		uint32_t *flags, uint32_t stride, uint32_t width, uint32_t height,
 		uint32_t src_x, uint32_t src_y, uint32_t dst_x, uint32_t dst_y,
@@ -176,6 +186,10 @@ void wlr_renderer_init_wl_display(struct wlr_renderer *r,
 		}
 	}
 
+	if (r->impl->texture_from_dmabuf) {
+		wlr_linux_dmabuf_v1_create(wl_display, r);
+	}
+
 	if (r->impl->init_wl_display) {
 		r->impl->init_wl_display(r, wl_display);
 	}
@@ -184,7 +198,30 @@ void wlr_renderer_init_wl_display(struct wlr_renderer *r,
 struct wlr_renderer *wlr_renderer_autocreate(struct wlr_egl *egl,
 		EGLenum platform, void *remote_display, EGLint *config_attribs,
 		EGLint visual_id) {
-	if (!wlr_egl_init(egl, platform, remote_display, config_attribs, visual_id)) {
+	// Append GLES2-specific bits to the provided EGL config attributes
+	EGLint gles2_config_attribs[] = {
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+		EGL_NONE,
+	};
+
+	size_t config_attribs_len = 0; // not including terminating EGL_NONE
+	while (config_attribs != NULL &&
+			config_attribs[config_attribs_len] != EGL_NONE) {
+		++config_attribs_len;
+	}
+
+	size_t all_config_attribs_len = config_attribs_len +
+		sizeof(gles2_config_attribs) / sizeof(gles2_config_attribs[0]);
+	EGLint all_config_attribs[all_config_attribs_len];
+	if (config_attribs_len > 0) {
+		memcpy(all_config_attribs, config_attribs,
+			config_attribs_len * sizeof(EGLint));
+	}
+	memcpy(&all_config_attribs[config_attribs_len], gles2_config_attribs,
+		sizeof(gles2_config_attribs));
+
+	if (!wlr_egl_init(egl, platform, remote_display, all_config_attribs,
+			visual_id)) {
 		wlr_log(WLR_ERROR, "Could not initialize EGL");
 		return NULL;
 	}

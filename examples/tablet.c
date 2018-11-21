@@ -1,5 +1,4 @@
-#define _POSIX_C_SOURCE 200112L
-#define _XOPEN_SOURCE 500
+#define _XOPEN_SOURCE 600
 #include <GLES2/gl2.h>
 #include <math.h>
 #include <stdio.h>
@@ -298,8 +297,14 @@ void new_input_notify(struct wl_listener *listener, void *data) {
 			wlr_log(WLR_ERROR, "Failed to create XKB context");
 			exit(1);
 		}
-		wlr_keyboard_set_keymap(device->keyboard, xkb_map_new_from_names(context,
-					&rules, XKB_KEYMAP_COMPILE_NO_FLAGS));
+		struct xkb_keymap *keymap = xkb_map_new_from_names(context, &rules,
+			XKB_KEYMAP_COMPILE_NO_FLAGS);
+		if (!keymap) {
+			wlr_log(WLR_ERROR, "Failed to create XKB keymap");
+			exit(1);
+		}
+		wlr_keyboard_set_keymap(device->keyboard, keymap);
+		xkb_keymap_unref(keymap);
 		xkb_context_unref(context);
 		break;
 	case WLR_INPUT_DEVICE_TABLET_PAD:;

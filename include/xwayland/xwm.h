@@ -5,10 +5,10 @@
 #include <wlr/config.h>
 #include <wlr/xwayland.h>
 #include <xcb/render.h>
-#ifdef WLR_HAS_XCB_ICCCM
+#if WLR_HAS_XCB_ICCCM
 #include <xcb/xcb_icccm.h>
 #endif
-#ifdef WLR_HAS_XCB_ERRORS
+#if WLR_HAS_XCB_ERRORS
 #include <xcb/xcb_errors.h>
 #endif
 #include "xwayland/selection.h"
@@ -25,11 +25,12 @@ enum atom_name {
 	WM_HINTS,
 	WM_NORMAL_HINTS,
 	WM_SIZE_HINTS,
+	WM_WINDOW_ROLE,
 	MOTIF_WM_HINTS,
 	UTF8_STRING,
 	WM_S0,
 	NET_SUPPORTED,
-	NET_WM_S0,
+	NET_WM_CM_S0,
 	NET_WM_PID,
 	NET_WM_NAME,
 	NET_WM_STATE,
@@ -40,6 +41,7 @@ enum atom_name {
 	_NET_WM_MOVERESIZE,
 	_NET_WM_NAME,
 	_NET_SUPPORTING_WM_CHECK,
+	_NET_WM_STATE_MODAL,
 	_NET_WM_STATE_FULLSCREEN,
 	_NET_WM_STATE_MAXIMIZED_VERT,
 	_NET_WM_STATE_MAXIMIZED_HORZ,
@@ -120,7 +122,7 @@ struct wlr_xwm {
 	struct wlr_xwayland_surface *drag_focus;
 
 	const xcb_query_extension_reply_t *xfixes;
-#ifdef WLR_HAS_XCB_ERRORS
+#if WLR_HAS_XCB_ERRORS
 	xcb_errors_context_t *errors_context;
 #endif
 

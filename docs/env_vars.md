@@ -7,6 +7,8 @@ wlroots specific
   considered the primary DRM device.
 * *WLR_DRM_NO_ATOMIC*: set to 1 to use legacy DRM interface instead of atomic
   mode setting
+* *WLR_DRM_NO_ATOMIC_GAMMA*: set to 1 to use legacy DRM interface for gamma
+  control instead of the atomic interface
 * *WLR_LIBINPUT_NO_DEVICES*: set to 1 to not fail without any input devices
 * *WLR_BACKENDS*: comma-separated list of backends to use (available backends:
   wayland, x11, headless)
@@ -14,6 +16,10 @@ wlroots specific
 * *WLR_X11_OUTPUTS*: when using the X11 backend specifies the number of outputs
 * *WLR_HEADLESS_OUTPUTS*: when using the headless backend specifies the number
   of outputs
+* *WLR_NO_HARDWARE_CURSORS*: set to 1 to use software cursors instead of
+  hardware cursors
+* *WLR_SESSION*: specifies the wlr\_session to be used (available sessions:
+  logind/systemd, direct)
 
 rootston specific
 ------------------
@@ -26,4 +32,3 @@ generic
 * *WAYLAND_DISPLAY*, *_WAYLAND_DISPLAY*, *WAYLAND_SOCKET*: if set probe Wayland
   backend in *wlr_backend_autocreate*
 * *XCURSOR_PATH*: directory where xcursors are located
-* *XDG_RUNTIME_DIR*: used to store non persistent temporary files

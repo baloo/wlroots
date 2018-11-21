@@ -5,9 +5,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <wayland-server.h>
-#include <wlr/backend/multi.h>
 #include <wlr/backend/session.h>
 #include <wlr/types/wlr_input_device.h>
+#include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_pointer.h>
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
@@ -176,6 +176,13 @@ static void keyboard_binding_execute(struct roots_keyboard *keyboard,
 					decoration->wlr_decoration, mode);
 			}
 		}
+	} else if (strcmp(command, "break_pointer_constraint") == 0) {
+		struct wl_list *list =
+			&keyboard->input->seats;
+		struct roots_seat *seat;
+		wl_list_for_each(seat, list, link) {
+			roots_cursor_constrain(seat->cursor, NULL, NAN, NAN);
+		}
 	} else {
 		wlr_log(WLR_ERROR, "unknown binding command: %s", command);
 	}
@@ -193,14 +200,13 @@ static bool keyboard_execute_compositor_binding(struct roots_keyboard *keyboard,
 	if (keysym >= XKB_KEY_XF86Switch_VT_1 &&
 			keysym <= XKB_KEY_XF86Switch_VT_12) {
 		struct roots_server *server = keyboard->input->server;
-		if (wlr_backend_is_multi(server->backend)) {
-			struct wlr_session *session =
-				wlr_multi_get_session(server->backend);
-			if (session) {
-				unsigned vt = keysym - XKB_KEY_XF86Switch_VT_1 + 1;
-				wlr_session_change_vt(session, vt);
-			}
+
+		struct wlr_session *session = wlr_backend_get_session(server->backend);
+		if (session) {
+			unsigned vt = keysym - XKB_KEY_XF86Switch_VT_1 + 1;
+			wlr_session_change_vt(session, vt);
 		}
+
 		return true;
 	}
 

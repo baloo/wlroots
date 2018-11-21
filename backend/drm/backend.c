@@ -15,8 +15,14 @@
 #include "backend/drm/drm.h"
 #include "util/signal.h"
 
+struct wlr_drm_backend *get_drm_backend_from_backend(
+		struct wlr_backend *wlr_backend) {
+	assert(wlr_backend_is_drm(wlr_backend));
+	return (struct wlr_drm_backend *)wlr_backend;
+}
+
 static bool backend_start(struct wlr_backend *backend) {
-	struct wlr_drm_backend *drm = (struct wlr_drm_backend *)backend;
+	struct wlr_drm_backend *drm = get_drm_backend_from_backend(backend);
 	scan_drm_connectors(drm);
 	return true;
 }
@@ -26,7 +32,7 @@ static void backend_destroy(struct wlr_backend *backend) {
 		return;
 	}
 
-	struct wlr_drm_backend *drm = (struct wlr_drm_backend *)backend;
+	struct wlr_drm_backend *drm = get_drm_backend_from_backend(backend);
 
 	restore_drm_outputs(drm);
 
@@ -50,7 +56,7 @@ static void backend_destroy(struct wlr_backend *backend) {
 
 static struct wlr_renderer *backend_get_renderer(
 		struct wlr_backend *backend) {
-	struct wlr_drm_backend *drm = (struct wlr_drm_backend *)backend;
+	struct wlr_drm_backend *drm = get_drm_backend_from_backend(backend);
 
 	if (drm->parent) {
 		return drm->parent->renderer.wlr_rend;
@@ -59,10 +65,16 @@ static struct wlr_renderer *backend_get_renderer(
 	}
 }
 
+static clockid_t backend_get_presentation_clock(struct wlr_backend *backend) {
+	struct wlr_drm_backend *drm = get_drm_backend_from_backend(backend);
+	return drm->clock;
+}
+
 static struct wlr_backend_impl backend_impl = {
 	.start = backend_start,
 	.destroy = backend_destroy,
 	.get_renderer = backend_get_renderer,
+	.get_presentation_clock = backend_get_presentation_clock,
 };
 
 bool wlr_backend_is_drm(struct wlr_backend *b) {
@@ -95,6 +107,16 @@ static void session_signal(struct wl_listener *listener, void *data) {
 				(plane && plane->cursor_enabled) ? plane->cursor_bo : NULL);
 			drm->iface->crtc_move_cursor(drm, conn->crtc, conn->cursor_x,
 				conn->cursor_y);
+
+			if (conn->crtc->gamma_table != NULL) {
+				size_t size = conn->crtc->gamma_table_size;
+				uint16_t *r = conn->crtc->gamma_table;
+				uint16_t *g = conn->crtc->gamma_table + size;
+				uint16_t *b = conn->crtc->gamma_table + 2 * size;
+				drm->iface->crtc_set_gamma(drm, conn->crtc, size, r, g, b);
+			} else {
+				set_drm_connector_gamma(&conn->output, 0, NULL, NULL, NULL);
+			}
 		}
 	} else {
 		wlr_log(WLR_INFO, "DRM fd paused");
@@ -141,7 +163,9 @@ struct wlr_backend *wlr_drm_backend_create(struct wl_display *display,
 	wl_list_init(&drm->outputs);
 
 	drm->fd = gpu_fd;
-	drm->parent = (struct wlr_drm_backend *)parent;
+	if (parent != NULL) {
+		drm->parent = get_drm_backend_from_backend(parent);
+	}
 
 	drm->drm_invalidated.notify = drm_invalidated;
 	wlr_session_signal_add(session, gpu_fd, &drm->drm_invalidated);
@@ -184,9 +208,4 @@ error_fd:
 	wlr_session_close_file(drm->session, drm->fd);
 	free(drm);
 	return NULL;
-}
-
-struct wlr_session *wlr_drm_backend_get_session(struct wlr_backend *backend) {
-	struct wlr_drm_backend *drm = (struct wlr_drm_backend *)backend;
-	return drm->session;
 }

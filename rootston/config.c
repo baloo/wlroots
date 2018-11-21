@@ -26,7 +26,10 @@ static void usage(const char *name, int ret) {
 		"                See `rootston.ini.example` for config\n"
 		"                file documentation.\n"
 		" -E <COMMAND>   Command that will be ran at startup.\n"
-		" -D             Enable damage tracking debugging.\n",
+		" -D             Enable damage tracking debugging.\n"
+		" -l <LEVEL>     Set log verbosity, where,\n"
+		"                0:SILENT, 1:ERROR, 2:INFO, 3+:DEBUG\n"
+		"                (default: DEBUG)\n",
 		name);
 
 	exit(ret);
@@ -455,7 +458,8 @@ struct roots_config *roots_config_create_from_args(int argc, char *argv[]) {
 	wl_list_init(&config->bindings);
 
 	int c;
-	while ((c = getopt(argc, argv, "C:E:hD")) != -1) {
+	unsigned int log_verbosity = WLR_DEBUG;
+	while ((c = getopt(argc, argv, "C:E:hDl:")) != -1) {
 		switch (c) {
 		case 'C':
 			config->config_path = strdup(optarg);
@@ -466,11 +470,18 @@ struct roots_config *roots_config_create_from_args(int argc, char *argv[]) {
 		case 'D':
 			config->debug_damage_tracking = true;
 			break;
+		case 'l':
+			log_verbosity = strtoul(optarg, NULL, 10);
+			if (log_verbosity >= WLR_LOG_IMPORTANCE_LAST) {
+				log_verbosity = WLR_LOG_IMPORTANCE_LAST - 1;
+			}
+			break;
 		case 'h':
 		case '?':
 			usage(argv[0], c != 'h');
 		}
 	}
+	wlr_log_init(log_verbosity, NULL);
 
 	if (!config->config_path) {
 		// get the config path from the current directory
@@ -495,6 +506,7 @@ struct roots_config *roots_config_create_from_args(int argc, char *argv[]) {
 		add_binding_config(&config->bindings, "Logo+Shift+E", "exit");
 		add_binding_config(&config->bindings, "Ctrl+q", "close");
 		add_binding_config(&config->bindings, "Alt+Tab", "next_window");
+		add_binding_config(&config->bindings, "Logo+Escape", "break_pointer_constraint");
 		struct roots_keyboard_config *kc =
 			calloc(1, sizeof(struct roots_keyboard_config));
 		kc->meta_key = WLR_MODIFIER_LOGO;
@@ -565,7 +577,7 @@ void roots_config_destroy(struct roots_config *config) {
 
 struct roots_output_config *roots_config_get_output(struct roots_config *config,
 		struct wlr_output *output) {
-	char name[83];
+	char name[88];
 	snprintf(name, sizeof(name), "%s %s %s", output->make, output->model,
 		output->serial);
 

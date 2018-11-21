@@ -7,6 +7,7 @@
 #include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_region.h>
 #include <wlr/types/wlr_surface.h>
+#include <wlr/types/wlr_output.h>
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
 #include "util/signal.h"
@@ -113,9 +114,6 @@ static void surface_set_opaque_region(struct wl_client *client,
 		struct wl_resource *resource,
 		struct wl_resource *region_resource) {
 	struct wlr_surface *surface = wlr_surface_from_resource(resource);
-	if ((surface->pending.committed & WLR_SURFACE_STATE_OPAQUE_REGION)) {
-		pixman_region32_clear(&surface->pending.opaque);
-	}
 	surface->pending.committed |= WLR_SURFACE_STATE_OPAQUE_REGION;
 	if (region_resource) {
 		pixman_region32_t *region = wlr_region_from_resource(region_resource);
@@ -126,7 +124,8 @@ static void surface_set_opaque_region(struct wl_client *client,
 }
 
 static void surface_set_input_region(struct wl_client *client,
-		struct wl_resource *resource, struct wl_resource *region_resource) {
+		struct wl_resource *resource,
+		struct wl_resource *region_resource) {
 	struct wlr_surface *surface = wlr_surface_from_resource(resource);
 	surface->pending.committed |= WLR_SURFACE_STATE_INPUT_REGION;
 	if (region_resource) {
@@ -169,38 +168,28 @@ static void surface_state_finalize(struct wlr_surface *surface,
 }
 
 static void surface_update_damage(pixman_region32_t *buffer_damage,
-		struct wlr_surface_state *previous, struct wlr_surface_state *current) {
+		struct wlr_surface_state *current, struct wlr_surface_state *pending) {
 	pixman_region32_clear(buffer_damage);
 
-	if (current->buffer_width != previous->buffer_width ||
-			current->buffer_height != previous->buffer_height ||
-			current->dx != 0 || current->dy != 0) {
-		// Damage the whole surface on resize or move
-		int prev_x = -current->dx;
-		int prev_y = -current->dy;
-		if ((previous->transform & WL_OUTPUT_TRANSFORM_90) != 0) {
-			int tmp = prev_x;
-			prev_x = prev_y;
-			prev_y = tmp;
-		}
-
-		pixman_region32_union_rect(buffer_damage, buffer_damage,
-			prev_x * previous->scale, prev_y * previous->scale,
-			previous->buffer_width, previous->buffer_height);
+	if (pending->width != current->width ||
+			pending->height != current->height) {
+		// Damage the whole buffer on resize
 		pixman_region32_union_rect(buffer_damage, buffer_damage, 0, 0,
-			current->buffer_width, current->buffer_height);
+			pending->buffer_width, pending->buffer_height);
 	} else {
 		// Copy over surface damage + buffer damage
-		pixman_region32_union(buffer_damage, buffer_damage,
-			&current->buffer_damage);
-
 		pixman_region32_t surface_damage;
 		pixman_region32_init(&surface_damage);
-		pixman_region32_copy(&surface_damage, &current->surface_damage);
+
+		pixman_region32_copy(&surface_damage, &pending->surface_damage);
 		wlr_region_transform(&surface_damage, &surface_damage,
-			current->transform, current->buffer_width, current->buffer_height);
-		wlr_region_scale(&surface_damage, &surface_damage, current->scale);
-		pixman_region32_union(buffer_damage, buffer_damage, &surface_damage);
+			wlr_output_transform_invert(pending->transform),
+			pending->width, pending->height);
+		wlr_region_scale(&surface_damage, &surface_damage, pending->scale);
+
+		pixman_region32_union(buffer_damage,
+			&pending->buffer_damage, &surface_damage);
+
 		pixman_region32_fini(&surface_damage);
 	}
 }
@@ -299,29 +288,8 @@ static void surface_apply_damage(struct wlr_surface *surface) {
 	}
 
 	if (surface->buffer != NULL && surface->buffer->released) {
-		pixman_region32_t damage;
-		pixman_region32_init(&damage);
-		pixman_region32_copy(&damage, &surface->current.buffer_damage);
-
-		pixman_region32_t surface_damage;
-		pixman_region32_init(&surface_damage);
-		pixman_region32_copy(&surface_damage, &surface->current.surface_damage);
-		wlr_region_transform(&surface_damage, &surface_damage,
-			surface->current.transform,
-			surface->current.buffer_width, surface->current.buffer_height);
-		wlr_region_scale(&surface_damage, &surface_damage,
-			surface->current.scale);
-		pixman_region32_union(&damage, &damage, &surface_damage);
-		pixman_region32_fini(&surface_damage);
-
-		pixman_region32_intersect_rect(&damage, &damage, 0, 0,
-			surface->current.buffer_width, surface->current.buffer_height);
-
-		struct wlr_buffer *updated_buffer =
-			wlr_buffer_apply_damage(surface->buffer, resource, &damage);
-
-		pixman_region32_fini(&damage);
-
+		struct wlr_buffer *updated_buffer = wlr_buffer_apply_damage(
+			surface->buffer, resource, &surface->buffer_damage);
 		if (updated_buffer != NULL) {
 			surface->buffer = updated_buffer;
 			return;
@@ -353,9 +321,14 @@ static void surface_update_opaque_region(struct wlr_surface *surface) {
 		return;
 	}
 
-	pixman_region32_copy(&surface->opaque_region, &surface->current.opaque);
 	pixman_region32_intersect_rect(&surface->opaque_region,
-		&surface->opaque_region,
+		&surface->current.opaque,
+		0, 0, surface->current.width, surface->current.height);
+}
+
+static void surface_update_input_region(struct wlr_surface *surface) {
+	pixman_region32_intersect_rect(&surface->input_region,
+		&surface->current.input,
 		0, 0, surface->current.width, surface->current.height);
 }
 
@@ -380,6 +353,7 @@ static void surface_commit_pending(struct wlr_surface *surface) {
 		surface_apply_damage(surface);
 	}
 	surface_update_opaque_region(surface);
+	surface_update_input_region(surface);
 
 	// commit subsurface order
 	struct wlr_subsurface *subsurface;
@@ -587,6 +561,7 @@ static void surface_handle_resource_destroy(struct wl_resource *resource) {
 	surface_state_finish(&surface->previous);
 	pixman_region32_fini(&surface->buffer_damage);
 	pixman_region32_fini(&surface->opaque_region);
+	pixman_region32_fini(&surface->input_region);
 	wlr_buffer_unref(surface->buffer);
 	free(surface);
 }
@@ -633,6 +608,7 @@ struct wlr_surface *wlr_surface_create(struct wl_client *client,
 	wl_list_init(&surface->subsurface_pending_list);
 	pixman_region32_init(&surface->buffer_damage);
 	pixman_region32_init(&surface->opaque_region);
+	pixman_region32_init(&surface->input_region);
 
 	wl_signal_add(&renderer->events.destroy, &surface->renderer_destroy);
 	surface->renderer_destroy.notify = surface_handle_renderer_destroy;
@@ -937,7 +913,7 @@ bool wlr_surface_point_accepts_input(struct wlr_surface *surface,
 		double sx, double sy) {
 	return sx >= 0 && sx < surface->current.width &&
 		sy >= 0 && sy < surface->current.height &&
-		pixman_region32_contains_point(&surface->current.input, sx, sy, NULL);
+		pixman_region32_contains_point(&surface->current.input, floor(sx), floor(sy), NULL);
 }
 
 struct wlr_surface *wlr_surface_surface_at(struct wlr_surface *surface,
@@ -1048,4 +1024,36 @@ void wlr_surface_get_extends(struct wlr_surface *surface, struct wlr_box *box) {
 	box->y = acc.min_y;
 	box->width = acc.max_x - acc.min_x;
 	box->height = acc.max_y - acc.min_y;
+}
+
+void wlr_surface_get_effective_damage(struct wlr_surface *surface,
+		pixman_region32_t *damage) {
+	pixman_region32_clear(damage);
+
+	// Transform and copy the buffer damage in terms of surface coordinates.
+	wlr_region_transform(damage, &surface->buffer_damage,
+		surface->current.transform, surface->current.buffer_width,
+		surface->current.buffer_height);
+	wlr_region_scale(damage, damage, 1.0 / (float)surface->current.scale);
+
+	// On resize, damage the previous bounds of the surface. The current bounds
+	// have already been damaged in surface_update_damage.
+	if (surface->previous.width > surface->current.width ||
+			surface->previous.height > surface->current.height) {
+		pixman_region32_union_rect(damage, damage, 0, 0,
+			surface->previous.width, surface->previous.height);
+	}
+
+	// On move, damage where the surface was with its old dimensions.
+	if (surface->current.dx != 0 || surface->current.dy != 0) {
+		int prev_x = -surface->current.dx;
+		int prev_y = -surface->current.dy;
+		if ((surface->previous.transform & WL_OUTPUT_TRANSFORM_90) != 0) {
+			int temp = prev_x;
+			prev_x = prev_y;
+			prev_y = temp;
+		}
+		pixman_region32_union_rect(damage, damage, prev_x, prev_y,
+			surface->previous.width, surface->previous.height);
+	}
 }

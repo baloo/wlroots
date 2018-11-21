@@ -1,4 +1,4 @@
-#define _POSIX_C_SOURCE 199309L
+#define _POSIX_C_SOURCE 200112L
 #include <assert.h>
 #include <libinput.h>
 #include <stdlib.h>
@@ -8,7 +8,7 @@
 #include <wlr/backend/libinput.h>
 #include <wlr/config.h>
 #include <wlr/types/wlr_idle.h>
-#include <wlr/types/wlr_layer_shell.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_tablet_v2.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/log.h>
@@ -16,6 +16,7 @@
 #include "rootston/input.h"
 #include "rootston/keyboard.h"
 #include "rootston/seat.h"
+#include "rootston/text_input.h"
 #include "rootston/xcursor.h"
 
 
@@ -129,21 +130,21 @@ static void handle_tablet_tool_position(struct roots_cursor *cursor,
 	struct roots_tablet_tool *roots_tool = tool->data;
 
 	if (!surface) {
-		wlr_send_tablet_v2_tablet_tool_proximity_out(roots_tool->tablet_v2_tool);
+		wlr_tablet_v2_tablet_tool_notify_proximity_out(roots_tool->tablet_v2_tool);
 		/* XXX: TODO: Fallback pointer semantics */
 		return;
 	}
 
 	if (!wlr_surface_accepts_tablet_v2(tablet->tablet_v2, surface)) {
-		wlr_send_tablet_v2_tablet_tool_proximity_out(roots_tool->tablet_v2_tool);
+		wlr_tablet_v2_tablet_tool_notify_proximity_out(roots_tool->tablet_v2_tool);
 		/* XXX: TODO: Fallback pointer semantics */
 		return;
 	}
 
-	wlr_send_tablet_v2_tablet_tool_proximity_in(roots_tool->tablet_v2_tool,
+	wlr_tablet_v2_tablet_tool_notify_proximity_in(roots_tool->tablet_v2_tool,
 		tablet->tablet_v2, surface);
 
-	wlr_send_tablet_v2_tablet_tool_motion(roots_tool->tablet_v2_tool, sx, sy);
+	wlr_tablet_v2_tablet_tool_notify_motion(roots_tool->tablet_v2_tool, sx, sy);
 }
 
 static void handle_tool_axis(struct wl_listener *listener, void *data) {
@@ -169,32 +170,41 @@ static void handle_tool_axis(struct wl_listener *listener, void *data) {
 		event->x, event->y, event->dx, event->dy);
 
 	if (event->updated_axes & WLR_TABLET_TOOL_AXIS_PRESSURE) {
-		wlr_send_tablet_v2_tablet_tool_pressure(
+		wlr_tablet_v2_tablet_tool_notify_pressure(
 			roots_tool->tablet_v2_tool, event->pressure);
 	}
 
 	if (event->updated_axes & WLR_TABLET_TOOL_AXIS_DISTANCE) {
-		wlr_send_tablet_v2_tablet_tool_distance(
+		wlr_tablet_v2_tablet_tool_notify_distance(
 			roots_tool->tablet_v2_tool, event->distance);
 	}
 
+	if (event->updated_axes & WLR_TABLET_TOOL_AXIS_TILT_X) {
+		roots_tool->tilt_x = event->tilt_x;
+	}
+
+	if (event->updated_axes & WLR_TABLET_TOOL_AXIS_TILT_Y) {
+		roots_tool->tilt_y = event->tilt_y;
+	}
+
 	if (event->updated_axes & (WLR_TABLET_TOOL_AXIS_TILT_X | WLR_TABLET_TOOL_AXIS_TILT_Y)) {
-		wlr_send_tablet_v2_tablet_tool_tilt(
-			roots_tool->tablet_v2_tool, event->tilt_x, event->tilt_y);
+		wlr_tablet_v2_tablet_tool_notify_tilt(
+			roots_tool->tablet_v2_tool,
+			roots_tool->tilt_x, roots_tool->tilt_y);
 	}
 
 	if (event->updated_axes & WLR_TABLET_TOOL_AXIS_ROTATION) {
-		wlr_send_tablet_v2_tablet_tool_rotation(
+		wlr_tablet_v2_tablet_tool_notify_rotation(
 			roots_tool->tablet_v2_tool, event->rotation);
 	}
 
 	if (event->updated_axes & WLR_TABLET_TOOL_AXIS_SLIDER) {
-		wlr_send_tablet_v2_tablet_tool_slider(
+		wlr_tablet_v2_tablet_tool_notify_slider(
 			roots_tool->tablet_v2_tool, event->slider);
 	}
 
 	if (event->updated_axes & WLR_TABLET_TOOL_AXIS_WHEEL) {
-		wlr_send_tablet_v2_tablet_tool_wheel(
+		wlr_tablet_v2_tablet_tool_notify_wheel(
 			roots_tool->tablet_v2_tool, event->wheel_delta, 0);
 	}
 }
@@ -208,9 +218,10 @@ static void handle_tool_tip(struct wl_listener *listener, void *data) {
 	struct roots_tablet_tool *roots_tool = event->tool->data;
 
 	if (event->state == WLR_TABLET_TOOL_TIP_DOWN) {
-		wlr_send_tablet_v2_tablet_tool_down(roots_tool->tablet_v2_tool);
+		wlr_tablet_v2_tablet_tool_notify_down(roots_tool->tablet_v2_tool);
+		wlr_tablet_tool_v2_start_implicit_grab(roots_tool->tablet_v2_tool);
 	} else {
-		wlr_send_tablet_v2_tablet_tool_up(roots_tool->tablet_v2_tool);
+		wlr_tablet_v2_tablet_tool_notify_up(roots_tool->tablet_v2_tool);
 	}
 }
 
@@ -235,7 +246,7 @@ static void handle_tool_button(struct wl_listener *listener, void *data) {
 	struct wlr_event_tablet_tool_button *event = data;
 	struct roots_tablet_tool *roots_tool = event->tool->data;
 
-	wlr_send_tablet_v2_tablet_tool_button(roots_tool->tablet_v2_tool,
+	wlr_tablet_v2_tablet_tool_notify_button(roots_tool->tablet_v2_tool,
 		(enum zwp_tablet_pad_v2_button_state)event->button,
 		(enum zwp_tablet_pad_v2_button_state)event->state);
 }
@@ -284,6 +295,12 @@ static void handle_tool_proximity(struct wl_listener *listener, void *data) {
 		wl_list_init(&roots_tool->tool_link);
 	}
 
+	if (event->state == WLR_TABLET_TOOL_PROXIMITY_OUT) {
+		struct roots_tablet_tool *roots_tool = tool->data;
+		wlr_tablet_v2_tablet_tool_notify_proximity_out(roots_tool->tablet_v2_tool);
+		return;
+	}
+
 	handle_tablet_tool_position(cursor, event->device->data, event->tool,
 		true, true, event->x, event->y, 0, 0);
 }
@@ -296,6 +313,14 @@ static void handle_request_set_cursor(struct wl_listener *listener,
 	wlr_idle_notify_activity(desktop->idle, cursor->seat->seat);
 	struct wlr_seat_pointer_request_set_cursor_event *event = data;
 	roots_cursor_handle_request_set_cursor(cursor, event);
+}
+
+static void handle_pointer_focus_change(struct wl_listener *listener,
+		void *data) {
+	struct roots_cursor *cursor =
+		wl_container_of(listener, cursor, focus_change);
+	struct wlr_seat_pointer_focus_change_event *event = data;
+	roots_cursor_handle_focus_change(cursor, event);
 }
 
 static void seat_reset_device_mappings(struct roots_seat *seat,
@@ -433,6 +458,12 @@ static void roots_seat_init_cursor(struct roots_seat *seat) {
 	wl_signal_add(&seat->seat->events.request_set_cursor,
 		&seat->cursor->request_set_cursor);
 	seat->cursor->request_set_cursor.notify = handle_request_set_cursor;
+
+	wl_signal_add(&seat->seat->pointer_state.events.focus_change,
+		&seat->cursor->focus_change);
+	seat->cursor->focus_change.notify = handle_pointer_focus_change;
+
+	wl_list_init(&seat->cursor->constraint_commit.link);
 }
 
 static void roots_drag_icon_handle_surface_commit(struct wl_listener *listener,
@@ -502,16 +533,16 @@ void roots_drag_icon_update_position(struct roots_drag_icon *icon) {
 	struct roots_seat *seat = icon->seat;
 	struct wlr_cursor *cursor = seat->cursor->cursor;
 	if (wlr_icon->is_pointer) {
-		icon->x = cursor->x + wlr_icon->sx;
-		icon->y = cursor->y + wlr_icon->sy;
+		icon->x = cursor->x;
+		icon->y = cursor->y;
 	} else {
 		struct wlr_touch_point *point =
 			wlr_seat_touch_get_point(seat->seat, wlr_icon->touch_id);
 		if (point == NULL) {
 			return;
 		}
-		icon->x = seat->touch_x + wlr_icon->sx;
-		icon->y = seat->touch_y + wlr_icon->sy;
+		icon->x = seat->touch_x;
+		icon->y = seat->touch_y;
 	}
 
 	roots_drag_icon_damage_whole(icon);
@@ -566,6 +597,7 @@ struct roots_seat *roots_seat_create(struct roots_input *input, char *name) {
 		free(seat);
 		return NULL;
 	}
+	seat->seat->data = seat;
 
 	roots_seat_init_cursor(seat);
 	if (!seat->cursor) {
@@ -573,6 +605,8 @@ struct roots_seat *roots_seat_create(struct roots_input *input, char *name) {
 		free(seat);
 		return NULL;
 	}
+
+	roots_input_method_relay_init(seat, &seat->im_relay);
 
 	wl_list_insert(&input->seats, &seat->link);
 
@@ -745,6 +779,7 @@ static void attach_tablet_pad(struct roots_tablet_pad *pad,
 
 	pad->tablet = tool;
 
+	wl_list_remove(&pad->tablet_destroy.link);
 	pad->tablet_destroy.notify = handle_pad_tool_destroy;
 	wl_signal_add(&tool->device->events.destroy, &pad->tablet_destroy);
 }
@@ -763,7 +798,7 @@ static void handle_tablet_pad_ring(struct wl_listener *listener, void *data) {
 		wl_container_of(listener, pad, ring);
 	struct wlr_event_tablet_pad_ring *event = data;
 
-	wlr_send_tablet_v2_tablet_pad_ring(pad->tablet_v2_pad,
+	wlr_tablet_v2_tablet_pad_notify_ring(pad->tablet_v2_pad,
 		event->ring, event->position,
 		event->source == WLR_TABLET_PAD_RING_SOURCE_FINGER,
 		event->time_msec);
@@ -774,7 +809,7 @@ static void handle_tablet_pad_strip(struct wl_listener *listener, void *data) {
 		wl_container_of(listener, pad, strip);
 	struct wlr_event_tablet_pad_strip *event = data;
 
-	wlr_send_tablet_v2_tablet_pad_strip(pad->tablet_v2_pad,
+	wlr_tablet_v2_tablet_pad_notify_strip(pad->tablet_v2_pad,
 		event->strip, event->position,
 		event->source == WLR_TABLET_PAD_STRIP_SOURCE_FINGER,
 		event->time_msec);
@@ -785,10 +820,10 @@ static void handle_tablet_pad_button(struct wl_listener *listener, void *data) {
 		wl_container_of(listener, pad, button);
 	struct wlr_event_tablet_pad_button *event = data;
 
-	wlr_send_tablet_v2_tablet_pad_mode(pad->tablet_v2_pad,
+	wlr_tablet_v2_tablet_pad_notify_mode(pad->tablet_v2_pad,
 		event->group, event->mode, event->time_msec);
 
-	wlr_send_tablet_v2_tablet_pad_button(pad->tablet_v2_pad,
+	wlr_tablet_v2_tablet_pad_notify_button(pad->tablet_v2_pad,
 		event->button, event->time_msec,
 		(enum zwp_tablet_pad_v2_button_state)event->state);
 }
@@ -812,7 +847,8 @@ static void seat_add_tablet_pad(struct roots_seat *seat,
 		&tablet_pad->device_destroy);
 
 	tablet_pad->attach.notify = handle_tablet_pad_attach;
-	wl_signal_add(&tablet_pad->device->tablet_pad->events.attach_tablet, &tablet_pad->attach);
+	wl_signal_add(&tablet_pad->device->tablet_pad->events.attach_tablet,
+		&tablet_pad->attach);
 
 	tablet_pad->button.notify = handle_tablet_pad_button;
 	wl_signal_add(&tablet_pad->device->tablet_pad->events.button, &tablet_pad->button);
@@ -822,6 +858,8 @@ static void seat_add_tablet_pad(struct roots_seat *seat,
 
 	tablet_pad->ring.notify = handle_tablet_pad_ring;
 	wl_signal_add(&tablet_pad->device->tablet_pad->events.ring, &tablet_pad->ring);
+
+	wl_list_init(&tablet_pad->tablet_destroy.link);
 
 	struct roots_desktop *desktop = seat->input->server->desktop;
 	tablet_pad->tablet_v2_pad =
@@ -1093,7 +1131,7 @@ void roots_seat_set_focus(struct roots_seat *seat, struct roots_view *view) {
 
 	bool unfullscreen = true;
 
-#ifdef WLR_HAS_XWAYLAND
+#if WLR_HAS_XWAYLAND
 	if (view && view->type == ROOTS_XWAYLAND_VIEW &&
 			view->xwayland_surface->override_redirect) {
 		unfullscreen = false;
@@ -1122,7 +1160,7 @@ void roots_seat_set_focus(struct roots_seat *seat, struct roots_view *view) {
 		return;
 	}
 
-#ifdef WLR_HAS_XWAYLAND
+#if WLR_HAS_XWAYLAND
 	if (view && view->type == ROOTS_XWAYLAND_VIEW &&
 			!wlr_xwayland_or_surface_wants_focus(
 				view->xwayland_surface)) {
@@ -1147,6 +1185,7 @@ void roots_seat_set_focus(struct roots_seat *seat, struct roots_view *view) {
 	if (view == NULL) {
 		seat->cursor->mode = ROOTS_CURSOR_PASSTHROUGH;
 		wlr_seat_keyboard_clear_focus(seat->seat);
+		roots_input_method_relay_set_focus(&seat->im_relay, NULL);
 		return;
 	}
 
@@ -1174,13 +1213,19 @@ void roots_seat_set_focus(struct roots_seat *seat, struct roots_view *view) {
 		struct roots_tablet_pad *pad;
 		wl_list_for_each(pad, &seat->tablet_pads, link) {
 			if (pad->tablet) {
-				wlr_send_tablet_v2_tablet_pad_enter(pad->tablet_v2_pad, pad->tablet->tablet_v2, view->wlr_surface);
+				wlr_tablet_v2_tablet_pad_notify_enter(pad->tablet_v2_pad, pad->tablet->tablet_v2, view->wlr_surface);
 			}
 		}
 	} else {
 		wlr_seat_keyboard_notify_enter(seat->seat, view->wlr_surface,
 			NULL, 0, NULL);
 	}
+
+	if (seat->cursor) {
+		roots_cursor_update_focus(seat->cursor);
+	}
+
+	roots_input_method_relay_set_focus(&seat->im_relay, view->wlr_surface);
 }
 
 /**
@@ -1189,7 +1234,7 @@ void roots_seat_set_focus(struct roots_seat *seat, struct roots_view *view) {
  * You also cannot alt-tab between layer surfaces and shell surfaces.
  */
 void roots_seat_set_focus_layer(struct roots_seat *seat,
-		struct wlr_layer_surface *layer) {
+		struct wlr_layer_surface_v1 *layer) {
 	if (!layer) {
 		seat->focused_layer = NULL;
 		return;
@@ -1214,6 +1259,11 @@ void roots_seat_set_focus_layer(struct roots_seat *seat,
 	} else {
 		wlr_seat_keyboard_notify_enter(seat->seat, layer->surface,
 			NULL, 0, NULL);
+	}
+
+
+	if (seat->cursor) {
+		roots_cursor_update_focus(seat->cursor);
 	}
 }
 

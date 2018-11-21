@@ -73,7 +73,6 @@ struct wlr_data_source {
 	// source status
 	bool accepted;
 	struct wlr_data_offer *offer;
-	struct wlr_seat_client *seat_client;
 
 	// drag'n'drop status
 	enum wl_data_device_manager_dnd_action current_dnd_action;
@@ -92,8 +91,6 @@ struct wlr_drag_icon {
 
 	bool is_pointer;
 	int32_t touch_id;
-
-	int32_t sx, sy;
 
 	struct {
 		struct wl_signal map;

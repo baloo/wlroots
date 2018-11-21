@@ -19,7 +19,7 @@ extern const struct session_impl session_logind;
 extern const struct session_impl session_direct;
 
 static const struct session_impl *impls[] = {
-#if defined(WLR_HAS_SYSTEMD) || defined(WLR_HAS_ELOGIND)
+#if WLR_HAS_SYSTEMD || WLR_HAS_ELOGIND
 	&session_logind,
 #endif
 	&session_direct,
@@ -66,10 +66,25 @@ static void handle_display_destroy(struct wl_listener *listener, void *data) {
 
 struct wlr_session *wlr_session_create(struct wl_display *disp) {
 	struct wlr_session *session = NULL;
-	const struct session_impl **iter;
 
-	for (iter = impls; !session && *iter; ++iter) {
-		session = (*iter)->create(disp);
+	const char *env_wlr_session = getenv("WLR_SESSION");
+	if (env_wlr_session) {
+		if (!strcmp(env_wlr_session, "logind") || !strcmp(env_wlr_session, "systemd")) {
+		#if WLR_HAS_SYSTEMD || WLR_HAS_ELOGIND
+			session = session_logind.create(disp);
+		#else
+			wlr_log(WLR_ERROR, "wlroots is not compiled with logind support");
+		#endif
+		} else if (!strcmp(env_wlr_session, "direct")) {
+			session = session_direct.create(disp);
+		} else {
+			wlr_log(WLR_ERROR, "WLR_SESSION has an invalid value: %s", env_wlr_session);
+		}
+	} else {
+		const struct session_impl **iter;
+		for (iter = impls; !session && *iter; ++iter) {
+			session = (*iter)->create(disp);
+		}
 	}
 
 	if (!session) {
@@ -79,6 +94,7 @@ struct wlr_session *wlr_session_create(struct wl_display *disp) {
 
 	session->active = true;
 	wl_signal_init(&session->session_signal);
+	wl_signal_init(&session->events.destroy);
 	wl_list_init(&session->devices);
 
 	session->udev = udev_new();
@@ -125,6 +141,7 @@ void wlr_session_destroy(struct wlr_session *session) {
 		return;
 	}
 
+	wlr_signal_emit_safe(&session->events.destroy, session);
 	wl_list_remove(&session->display_destroy.link);
 
 	wl_event_source_remove(session->udev_event);
