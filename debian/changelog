@@ -1,3 +1,9 @@
+wlroots (0.0.0~git20181121+1280) unstable; urgency=medium
+
+  * fixup gtk-primary-selection: support multiple devices
+
+ -- Arthur Gautier <baloo@gandi.net>  Wed, 21 Nov 2018 17:35:18 +0000
+
 wlroots (0.0.0~git20181121) unstable; urgency=medium
 
   * New upstream version
