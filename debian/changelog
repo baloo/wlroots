@@ -1,3 +1,9 @@
+wlroots (0.0.0~git20181124+1384) unstable; urgency=medium
+
+  * allow multiple devices for the same seat
+
+ -- Arthur Gautier <baloo@superbaloo.net>  Sun, 25 Nov 2018 00:46:35 +0000
+
 wlroots (0.0.0~git20181121+1280) unstable; urgency=medium
 
   * fixup gtk-primary-selection: support multiple devices
