@@ -1,3 +1,10 @@
+wlroots (0.0.0~git20181126+1384) unstable; urgency=medium
+
+  * New upstream version
+  * allow multiple devices for the same seat
+
+ -- Arthur Gautier <baloo@superbaloo.net>  Mon, 26 Nov 2018 16:04:29 +0000
+
 wlroots (0.0.0~git20181124+1384) unstable; urgency=medium
 
   * allow multiple devices for the same seat
