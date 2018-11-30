@@ -1,3 +1,9 @@
+wlroots (0.2) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Arthur Gautier <baloo@superbaloo.net>  Fri, 30 Nov 2018 22:31:26 +0000
+
 wlroots (0.0.0~git20181126+1384) unstable; urgency=medium
 
   * New upstream version
